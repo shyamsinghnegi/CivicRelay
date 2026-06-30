@@ -1,26 +1,61 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  --font-sans: var(--font-inter);
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* Primary — Civic Teal */
+  --color-teal-50: #F0FDFA;
+  --color-teal-100: #CCFBF1;
+  --color-teal-300: #5EEAD4;
+  --color-teal-500: #14B8A6;
+  --color-teal-600: #0D9488;
+  --color-teal-700: #0F766E;
+  --color-teal-800: #115E59;
+  --color-teal-900: #134E4A;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Neutrals — cool Slate */
+  --color-slate-50: #F8FAFC;
+  --color-slate-100: #F1F5F9;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-400: #94A3B8;
+  --color-slate-500: #64748B;
+  --color-slate-700: #334155;
+  --color-slate-900: #0F172A;
+
+  /* Status system */
+  --color-status-submitted: #2563EB;
+  --color-status-submitted-bg: #EFF6FF;
+  --color-status-acknowledged: #7C3AED;
+  --color-status-acknowledged-bg: #F5F3FF;
+  --color-status-progress: #B45309;
+  --color-status-progress-bg: #FFFBEB;
+  --color-status-resolved: #047857;
+  --color-status-resolved-bg: #ECFDF5;
+  --color-status-rejected: #BE123C;
+  --color-status-rejected-bg: #FFF1F2;
+
+  /* Issue categories */
+  --color-cat-pothole: #B45309;
+  --color-cat-pothole-bg: #FEF3C7;
+  --color-cat-streetlight: #CA8A04;
+  --color-cat-streetlight-bg: #FEF9C3;
+  --color-cat-garbage: #15803D;
+  --color-cat-garbage-bg: #DCFCE7;
+  --color-cat-water: #0284C7;
+  --color-cat-water-bg: #E0F2FE;
+  --color-cat-drainage: #0E7490;
+  --color-cat-drainage-bg: #CFFAFE;
+  --color-cat-traffic: #DC2626;
+  --color-cat-traffic-bg: #FEE2E2;
+  --color-cat-dumping: #7C3AED;
+  --color-cat-dumping-bg: #F3E8FF;
+  --color-cat-other: #64748B;
+  --color-cat-other-bg: #F1F5F9;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-slate-50);
+  color: var(--color-slate-900);
 }
