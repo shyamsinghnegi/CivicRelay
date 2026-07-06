@@ -2,6 +2,7 @@ import { MapPin, Camera, Map, List, ChevronUp } from "lucide-react";
 import { Logo } from "./components/Logo";
 import { Badge } from "./components/Badge";
 import { statusConfig } from "./lib/status";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -24,7 +25,10 @@ export default function Home() {
       </div>
 
       <div className="flex flex-col gap-4">
-        <button className="flex items-center gap-4 rounded-[20px] bg-teal-700 p-5 text-left text-white shadow-[0_10px_24px_rgba(15,118,110,0.32)]">
+        <Link
+          href="/report"
+          className="flex items-center gap-4 rounded-[20px] bg-teal-700 p-5 text-left text-white shadow-[0_10px_24px_rgba(15,118,110,0.32)]"
+        >
           <Camera className="size-8 shrink-0" />
           <div>
             <div className="text-lg font-semibold">Report a problem</div>
@@ -32,27 +36,33 @@ export default function Home() {
               Snap a photo — we detect &amp; route it
             </div>
           </div>
-        </button>
+        </Link>
 
         <div className="grid grid-cols-2 gap-4">
-          <button className="flex flex-col items-start gap-3 rounded-2xl bg-white p-4 shadow-sm">
+          <Link
+            href="/map"
+            className="flex flex-col items-start gap-3 rounded-2xl bg-white p-4 shadow-sm"
+          >
             <div className="flex size-11 items-center justify-center rounded-[10px] bg-teal-100">
               <Map className="size-5 text-teal-700" />
             </div>
             <span className="text-sm font-semibold text-slate-900">
               Explore map
             </span>
-          </button>
+          </Link>
 
-          <button className="flex flex-col items-start gap-3 rounded-2xl bg-white p-4 shadow-sm">
-            <div className="flex size-11 items-center justify-center rounded-[10px] bg-[#FEF9C3]">
-              <List className="size-5 text-[#CA8A04]" />
+          <Link
+            href="/nearby"
+            className="flex flex-col items-start gap-3 rounded-2xl bg-white p-4 shadow-sm"
+          >
+            <div className="flex size-11 items-center justify-center rounded-[10px] bg-cat-streetlight-bg">
+              <List className="size-5 text-cat-streetlight" />
             </div>
             <span className="text-sm font-semibold text-slate-900">
               Nearby reports
             </span>
             <span className="text-xs text-slate-500">12 within 1 km</span>
-          </button>
+          </Link>
         </div>
       </div>
 
