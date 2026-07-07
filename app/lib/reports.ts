@@ -6,7 +6,7 @@ export type Report = {
     category: IssueCategory;
     title: string;
     description: string;
-    distanceKm: number;
+    distanceKm?: number;
     status: ReportStatus;
     upvoteCount: number;
     location?: string;

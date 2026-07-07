@@ -23,7 +23,7 @@ export function ReportCard({ report }: ReportCardProps) {
                 <div className="mt-2 flex items-center gap-2">
                     <span className="inline-flex items-center gap-1 text-xs font-medium text-teal-700">
                         <Navigation className="size-3" />
-                        {report.distanceKm.toFixed(1)} km
+                        {report.distanceKm != null ? `${report.distanceKm.toFixed(1)} km` : "nearby"}
                     </span>
                     <Badge {...statusConfig[report.status]} />
                 </div>
