@@ -1,8 +1,18 @@
 import { ArrowUpDown, MapPin } from "lucide-react";
 import { ReportCard } from "../components/ReportCard";
-import { mockNearbyReports } from "../lib/reports";
+import { db } from "../lib/db";
+import type { Report } from "../lib/reports";
 
-export default function NearbyReportsPage() {
+async function getReports(): Promise<Report[]> {
+  const { resources } = await db.items
+    .query("SELECT * FROM c ORDER BY c._ts DESC OFFSET 0 LIMIT 50")
+    .fetchAll();
+  return resources as Report[];
+}
+
+export default async function NearbyReportsPage() {
+  const reports = await getReports();
+
   return (
     <div className="flex h-full min-h-screen flex-col bg-slate-200">
       <div className="h-42.5 shrink-0 bg-slate-300" />
@@ -16,7 +26,7 @@ export default function NearbyReportsPage() {
               Nearby reports
             </h1>
             <p className="mt-0.5 flex items-center gap-1 text-sm text-slate-500">
-              {mockNearbyReports.length} within 1 km
+              {reports.length} within 1 km
               <MapPin className="size-3.5" />
               Ranchi
             </p>
@@ -28,9 +38,15 @@ export default function NearbyReportsPage() {
         </div>
 
         <div className="mt-4 flex flex-col gap-3">
-          {mockNearbyReports.map((report) => (
-            <ReportCard key={report.id} report={report} />
-          ))}
+          {reports.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">
+              No reports yet. Be the first to report an issue!
+            </p>
+          ) : (
+            reports.map((report) => (
+              <ReportCard key={report.id} report={report} />
+            ))
+          )}
         </div>
       </div>
     </div>
