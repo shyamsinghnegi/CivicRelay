@@ -1,4 +1,5 @@
 import { Navigation, ChevronUp } from "lucide-react";
+import Link from "next/link";
 import { CategoryTile } from "./CategoryTile";
 import { Badge } from "./Badge";
 import { statusConfig } from "../lib/status";
@@ -10,7 +11,7 @@ type ReportCardProps = {
 
 export function ReportCard({ report }: ReportCardProps) {
     return (
-        <div className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm">
+        <Link href={`/report/${report.id}`} className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm">
             <CategoryTile category={report.category} size="lg" />
 
             <div className="min-w-0 flex-1">
@@ -34,6 +35,6 @@ export function ReportCard({ report }: ReportCardProps) {
                     {report.upvoteCount}
                 </span>
             </div>
-        </div>
+        </Link>
     )
 }
