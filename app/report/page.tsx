@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { ArrowLeft, Camera, ImagePlus, MapPin, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowLeft, Camera, ImagePlus, MapPin, ChevronRight, Loader2, X } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { CategoryTile } from "../components/CategoryTile";
 import { Button } from "../components/Button";
 import type { IssueCategory } from "../lib/categories";
 
 type Step = 1 | 2 | 3;
+type Photo = { preview: string; url: string };
 
 export default function ReportPage() {
     const router = useRouter();
@@ -17,8 +17,10 @@ export default function ReportPage() {
 
     const [step, setStep] = useState<Step>(1);
     const [selectedCategory, setSelectedCategory] = useState<IssueCategory | null>(null);
-    const [imageUrl, setImageUrl] = useState<string | null>(null);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [secondaryCategories, setSecondaryCategories] = useState<IssueCategory[]>([]);
+    const [photos, setPhotos] = useState<Photo[]>([]);
+    const [aiTags, setAiTags] = useState<string[]>([]);
+    const [detectedCategory, setDetectedCategory] = useState<IssueCategory | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [uploading, setUploading] = useState(false);
@@ -31,28 +33,82 @@ export default function ReportPage() {
     ];
 
     async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = Array.from(e.target.files ?? []);
+        if (files.length === 0) return;
 
-        setImagePreview(URL.createObjectURL(file));
         setUploading(true);
         setError(null);
 
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const res = await fetch("/api/upload", { method: "POST", body: formData });
-        const data = await res.json();
-
-        setUploading(false);
-
-        if (!res.ok) {
-            setError("Upload failed. Please try again.");
+        const MAX_PHOTOS = 6;
+        if (photos.length >= MAX_PHOTOS) {
+            setError("You can add up to 6 photos.");
+            setUploading(false);
             return;
         }
 
-        setImageUrl(data.url);
-        setStep(2);
+        // Deduplicate within the batch by name+size, and against already-uploaded URLs
+        const existingUrls = new Set(photos.map((p) => p.url));
+        const slotsLeft = MAX_PHOTOS - photos.length;
+        const seenKeys = new Set<string>();
+        const uniqueFiles: File[] = [];
+        for (const f of files) {
+            if (uniqueFiles.length >= slotsLeft) break;
+            const key = `${f.name}-${f.size}`;
+            if (!seenKeys.has(key)) {
+                seenKeys.add(key);
+                uniqueFiles.push(f);
+            }
+        }
+
+        const newPhotos: Photo[] = [];
+
+        for (const file of uniqueFiles) {
+            const preview = URL.createObjectURL(file);
+            const formData = new FormData();
+            formData.append("file", file);
+            const res = await fetch("/api/upload", { method: "POST", body: formData });
+            const data = await res.json();
+
+            if (!res.ok) {
+                setError("One or more uploads failed. Please try again.");
+                setUploading(false);
+                return;
+            }
+
+            if (existingUrls.has(data.url)) {
+                // Same image content already added — revoke the unused preview blob
+                URL.revokeObjectURL(preview);
+            } else {
+                existingUrls.add(data.url);
+                newPhotos.push({ preview, url: data.url });
+            }
+        }
+
+        const allPhotos = [...photos, ...newPhotos];
+        setPhotos(allPhotos);
+        setUploading(false);
+
+        if (allPhotos.length === 1) {
+            const analyzeRes = await fetch("/api/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ imageUrl: allPhotos[0].url }),
+            });
+            const analyzeData = await analyzeRes.json();
+            if (analyzeRes.ok && analyzeData.category) {
+                setAiTags(analyzeData.tags ?? []);
+                setDetectedCategory(analyzeData.category);
+                setSelectedCategory(analyzeData.category);
+            } else if (analyzeData.error === "blurry") {
+                setError("Photo is too blurry to analyse — select the category yourself.");
+            }
+        }
+
+        e.target.value = "";
+    }
+
+    function removePhoto(index: number) {
+        setPhotos((prev) => prev.filter((_, i) => i !== index));
     }
 
     async function handleSubmit() {
@@ -60,6 +116,8 @@ export default function ReportPage() {
 
         setSubmitting(true);
         setError(null);
+
+        const imageUrls = photos.map((p) => p.url);
 
         const res = await fetch("/api/reports", {
             method: "POST",
@@ -69,7 +127,9 @@ export default function ReportPage() {
                 description,
                 category: selectedCategory,
                 location: "Ranchi",
-                imageUrl: imageUrl ?? undefined,
+                imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+                aiTags: aiTags.length > 0 ? aiTags : undefined,
+                secondaryCategories: secondaryCategories.length > 0 ? secondaryCategories : undefined,
             }),
         });
 
@@ -84,12 +144,12 @@ export default function ReportPage() {
     }
 
     return (
-        <div className="flex min-h-screen flex-col bg-slate-50">
-            {/* Hidden file input */}
+        <div className="flex h-full flex-col bg-slate-50">
             <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 className="hidden"
                 onChange={handleFileChange}
             />
@@ -97,10 +157,7 @@ export default function ReportPage() {
             {/* Header */}
             <div className="flex items-center gap-3 px-5 py-4">
                 {step === 1 ? (
-                    <Link
-                        href="/"
-                        className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm"
-                    >
+                    <Link href="/" className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
                         <ArrowLeft className="size-5 text-slate-700" />
                     </Link>
                 ) : (
@@ -114,7 +171,7 @@ export default function ReportPage() {
                 <div className="flex-1">
                     <p className="text-xs font-medium text-slate-400">Step {step} of 3</p>
                     <h1 className="text-base font-bold text-slate-900">
-                        {step === 1 && "Add a photo"}
+                        {step === 1 && "Add photos"}
                         {step === 2 && "What's the issue?"}
                         {step === 3 && "Confirm details"}
                     </h1>
@@ -129,49 +186,71 @@ export default function ReportPage() {
                 />
             </div>
 
-            {/* Step 1 — Photo */}
+            {/* Step 1 — Photos */}
             {step === 1 && (
-                <div className="flex flex-1 flex-col gap-5 px-5 py-6">
-                    <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-white py-16">
-                        {imagePreview ? (
-                            <Image
-                                src={imagePreview}
-                                alt="Preview"
-                                width={600}
-                                height={160}
-                                className="h-40 w-full rounded-xl object-cover"
-                            />
-                        ) : (
-                            <>
-                                <div className="flex size-16 items-center justify-center rounded-2xl bg-slate-100">
-                                    {uploading ? (
-                                        <Loader2 className="size-8 animate-spin text-teal-600" />
-                                    ) : (
-                                        <ImagePlus className="size-8 text-slate-400" />
-                                    )}
-                                </div>
-                                <p className="text-sm font-medium text-slate-500">
-                                    {uploading ? "Uploading…" : "Tap to add a photo"}
-                                </p>
-                            </>
+                <div className="flex flex-1 flex-col px-5 py-6">
+                    {photos.length > 0 ? (
+                        <div className="flex flex-1 flex-col gap-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                {photos.map((photo, i) => (
+                                    <div key={photo.url} className="relative aspect-square rounded-xl overflow-hidden">
+                                        <img src={photo.preview} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                                        <button
+                                            onClick={() => removePhoto(i)}
+                                            className="absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded-full bg-black/50"
+                                        >
+                                            <X className="size-3.5 text-white" />
+                                        </button>
+                                    </div>
+                                ))}
+                                {photos.length < 6 && (
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="aspect-square rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center gap-1"
+                                    >
+                                        <ImagePlus className="size-6 text-slate-400" />
+                                        <span className="text-xs text-slate-400">Add more</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <div
+                            className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-white cursor-pointer mb-5"
+                            onClick={() => !uploading && fileInputRef.current?.click()}
+                        >
+                            <div className="flex size-16 items-center justify-center rounded-2xl bg-slate-100">
+                                {uploading ? (
+                                    <Loader2 className="size-8 animate-spin text-teal-600" />
+                                ) : (
+                                    <ImagePlus className="size-8 text-slate-400" />
+                                )}
+                            </div>
+                            <p className="text-sm font-medium text-slate-500">
+                                {uploading ? "Uploading…" : "Tap to add photos from gallery"}
+                            </p>
+                        </div>
+                    )}
+
+                    {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+
+                    <div className="flex flex-col gap-3 mt-5">
+                        {uploading && (
+                            <div className="flex items-center justify-center gap-2 text-sm text-teal-600">
+                                <Loader2 className="size-4 animate-spin" />
+                                Uploading…
+                            </div>
                         )}
-                    </div>
-
-                    {error && <p className="text-sm text-red-500">{error}</p>}
-
-                    <div className="flex flex-col gap-3">
                         <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                             <Camera className="size-4" />
                             Take photo
                         </Button>
-                        <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                            <ImagePlus className="size-4" />
-                            Choose from gallery
-                        </Button>
-                        <button
-                            onClick={() => setStep(2)}
-                            className="text-sm text-slate-400 underline"
-                        >
+                        {photos.length > 0 && !uploading && (
+                            <Button onClick={() => setStep(2)}>
+                                Next →
+                            </Button>
+                        )}
+                        <button onClick={() => setStep(2)} className="text-sm text-slate-400 underline">
                             Skip photo
                         </button>
                     </div>
@@ -182,20 +261,40 @@ export default function ReportPage() {
             {step === 2 && (
                 <div className="flex flex-col gap-5 px-5 py-6">
                     <p className="text-sm text-slate-500">
-                        Select the issue category
+                        {detectedCategory ? (
+                            <>
+                                AI detected:{" "}
+                                <span className="font-semibold text-teal-700">
+                                    {detectedCategory.charAt(0).toUpperCase() + detectedCategory.slice(1)}
+                                </span>
+                                {" "}— tap to change
+                            </>
+                        ) : (
+                            "Select the issue category"
+                        )}
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                         {categories.map((cat) => (
                             <button
                                 key={cat}
                                 onClick={() => {
-                                    setSelectedCategory(cat);
-                                    setStep(3);
+                                    if (cat === selectedCategory) {
+                                        setSelectedCategory(null);
+                                        setSecondaryCategories([]);
+                                    } else if (secondaryCategories.includes(cat)) {
+                                        setSecondaryCategories(secondaryCategories.filter((c) => c !== cat));
+                                    } else if (!selectedCategory) {
+                                        setSelectedCategory(cat);
+                                    } else {
+                                        setSecondaryCategories([...secondaryCategories, cat]);
+                                    }
                                 }}
                                 className={[
                                     "flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm transition-all",
                                     selectedCategory === cat
                                         ? "ring-2 ring-teal-600 ring-offset-2"
+                                        : secondaryCategories.includes(cat)
+                                        ? "ring-2 ring-teal-300 ring-offset-2"
                                         : "",
                                 ].join(" ")}
                             >
@@ -206,6 +305,14 @@ export default function ReportPage() {
                             </button>
                         ))}
                     </div>
+                    {selectedCategory && (
+                        <button
+                            onClick={() => setStep(3)}
+                            className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white"
+                        >
+                            Continue
+                        </button>
+                    )}
                 </div>
             )}
 

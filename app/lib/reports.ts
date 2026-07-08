@@ -11,7 +11,9 @@ export type Report = {
     upvoteCount: number;
     location?: string;
     aiTags?: string[];
+    secondaryCategories?: IssueCategory[];
     imageUrl?: string;
+    imageUrls?: string[];
     submittedBy?: string;
     createdAt?: string;
     updatedAt?: string;

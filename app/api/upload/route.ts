@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { BlobServiceClient } from "@azure/storage-blob";
 import sharp from "sharp";
+import { createHash } from "crypto";
+
+export const config = {
+  api: { bodyParser: { sizeLimit: "10mb" } },
+};
+
+const MAX_BYTES = 10 * 1024 * 1024; // 10 MB pre-compression
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession();
@@ -20,14 +27,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "File must be an image" }, { status: 400 });
   }
 
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json({ error: "Image must be under 10 MB" }, { status: 413 });
+  }
+
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const compressed = await sharp(buffer)
-    .resize({ width: 1200, withoutEnlargement: true })
-    .jpeg({ quality: 80 })
-    .toBuffer();
+  let compressed: Buffer;
+  try {
+    compressed = await sharp(buffer)
+      .resize({ width: 1200, withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  } catch {
+    return NextResponse.json({ error: "Invalid or corrupt image file" }, { status: 400 });
+  }
 
-  const blobName = `${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, "-")}`;
+
+  const hash = createHash("sha256").update(buffer).digest("hex");
+  const blobName = `uploads/${hash}.jpg`;
 
   const blobServiceClient = BlobServiceClient.fromConnectionString(
     process.env.STORAGE_CONNECTION_STRING!
@@ -37,9 +55,14 @@ export async function POST(req: NextRequest) {
   );
 
   const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-  await blockBlobClient.uploadData(compressed, {
-    blobHTTPHeaders: { blobContentType: "image/jpeg" },
-  });
+
+  // If the same image was uploaded before, reuse it
+  const exists = await blockBlobClient.exists();
+  if (!exists) {
+    await blockBlobClient.uploadData(compressed, {
+      blobHTTPHeaders: { blobContentType: "image/jpeg" },
+    });
+  }
 
   return NextResponse.json({ url: blockBlobClient.url });
 }
