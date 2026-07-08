@@ -5,14 +5,20 @@ import { db } from "../../lib/db";
 import type { ReportStatus } from "../../lib/status";
 
 const CreateReportSchema = z.object({
-    title: z.string().min(5).max(120),
-    description: z.string().min(10).max(1000),
+    title: z.string().min(3).max(120),
+    description: z.string().min(3).max(1000),
     category: z.enum([
         "pothole", "streetlight", "garbage", "water",
         "drainage", "traffic", "dumping", "other",
     ]),
     location: z.string().optional(),
-    imageUrl: z.string().url().optional(),
+    imageUrl: z.string().optional(),
+    imageUrls: z.array(z.string()).optional(),
+    aiTags: z.array(z.string()).optional(),
+    secondaryCategories: z.array(z.enum([
+        "pothole", "streetlight", "garbage", "water",
+        "drainage", "traffic", "dumping", "other",
+    ])).optional(),
     lat: z.number().optional(),
     lng: z.number().optional(),
 });
@@ -52,6 +58,10 @@ export async function POST(req: NextRequest) {
         updatedAt: now,
     };
 
-    const { resource } = await db.items.create(report);
-    return NextResponse.json(resource, { status: 201 });
+    try {
+        const { resource } = await db.items.create(report);
+        return NextResponse.json(resource, { status: 201 });
+    } catch {
+        return NextResponse.json({ error: "Failed to save report. Please try again." }, { status: 500 });
+    }
 }
