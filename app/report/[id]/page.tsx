@@ -6,6 +6,7 @@ import { Badge } from "../../components/Badge";
 import { CategoryTile } from "../../components/CategoryTile";
 import { TagChip } from "../../components/TagChip";
 import { UpvoteButton } from "../../components/UpvoteButton";
+import { PhotoViewer } from "../../components/PhotoViewer";
 import { statusConfig } from "../../lib/status";
 import type { Report } from "../../lib/reports";
 
@@ -43,18 +44,16 @@ export default async function ReportDetailPage({
         </h1>
       </div>
 
-      {/* Photo */}
-      <div className="h-56 w-full bg-slate-300 flex items-center justify-center">
-        {report.imageUrl ? (
-          <img
-            src={report.imageUrl}
-            alt={report.title}
-            className="h-full w-full object-cover"
-          />
-        ) : (
+      {/* Photos */}
+      {report.imageUrls && report.imageUrls.length > 0 ? (
+        <PhotoViewer urls={report.imageUrls} title={report.title} />
+      ) : report.imageUrl ? (
+        <PhotoViewer urls={[report.imageUrl]} title={report.title} />
+      ) : (
+        <div className="h-28 w-full flex items-center justify-center bg-slate-200">
           <span className="text-sm text-slate-400">No photo attached</span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex flex-col gap-5 px-5 py-5">
