@@ -1,10 +1,24 @@
-import { MapPin, Camera, Map, List, ChevronUp } from "lucide-react";
+import { MapPin, Camera, Map, List } from "lucide-react";
 import { Logo } from "./components/Logo";
-import { Badge } from "./components/Badge";
-import { statusConfig } from "./lib/status";
+import { ReportCard } from "./components/ReportCard";
+import { db } from "./lib/db";
+import type { Report } from "./lib/reports";
 import Link from "next/link";
 
-export default function Home() {
+async function getLatestReports(): Promise<Report[]> {
+  try {
+    const { resources } = await db.items
+      .query({ query: "SELECT * FROM c ORDER BY c._ts DESC OFFSET 0 LIMIT 5" })
+      .fetchAll();
+    return resources as Report[];
+  } catch {
+    return [];
+  }
+}
+
+export default async function Home() {
+  const latest = await getLatestReports();
+
   return (
     <div className="min-h-full flex flex-col gap-8 px-5 py-6 max-w-md mx-auto w-full">
       <div className="flex items-center justify-between">
@@ -61,19 +75,25 @@ export default function Home() {
             <span className="text-sm font-semibold text-slate-900">
               Nearby reports
             </span>
-            <span className="text-xs text-slate-500">12 within 1 km</span>
+            <span className="text-xs text-slate-500">{latest.length} recent</span>
           </Link>
         </div>
       </div>
 
-      <div className="mt-auto flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
-        <ChevronUp className="size-4 shrink-0 text-slate-400" />
-        <p className="flex-1 text-sm text-slate-700">
-          Your pothole report is in progress{" "}
-          <Badge {...statusConfig.progress} />
-          <span className="ml-1 text-slate-400">· CR-4471 · 2h ago</span>
-        </p>
-      </div>
+      {/* Live feed */}
+      {latest.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">Latest reports</h2>
+            <Link href="/nearby" className="text-xs text-teal-700 font-medium">
+              See all
+            </Link>
+          </div>
+          {latest.map((report) => (
+            <ReportCard key={report.id} report={report} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
