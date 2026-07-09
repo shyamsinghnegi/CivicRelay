@@ -5,7 +5,9 @@ import type { Report } from "../lib/reports";
 
 async function getReports(): Promise<Report[]> {
   const { resources } = await db.items
-    .query("SELECT * FROM c ORDER BY c._ts DESC OFFSET 0 LIMIT 50")
+    .query({
+      query: "SELECT * FROM c ORDER BY c._ts DESC OFFSET 0 LIMIT 20",
+    })
     .fetchAll();
   return resources as Report[];
 }

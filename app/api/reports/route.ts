@@ -23,12 +23,22 @@ const CreateReportSchema = z.object({
     lng: z.number().optional(),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+    const { searchParams } = new URL(req.url);
+    const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10));
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10)));
+
     const { resources } = await db.items
-        .query("SELECT * FROM c ORDER BY c._ts DESC OFFSET 0 LIMIT 50")
+        .query({
+            query: "SELECT * FROM c ORDER BY c._ts DESC OFFSET @offset LIMIT @limit",
+            parameters: [
+                { name: "@offset", value: offset },
+                { name: "@limit", value: limit },
+            ],
+        })
         .fetchAll();
 
-    return NextResponse.json(resources);
+    return NextResponse.json({ items: resources, offset, limit, hasMore: resources.length === limit });
 }
 
 export async function POST(req: NextRequest) {

@@ -9,7 +9,7 @@ import type { Report } from "../lib/reports";
 async function getMyReports(email: string): Promise<Report[]> {
   const { resources } = await db.items
     .query({
-      query: "SELECT * FROM c WHERE c.submittedBy = @email ORDER BY c._ts DESC",
+      query: "SELECT * FROM c WHERE c.submittedBy = @email ORDER BY c._ts DESC OFFSET 0 LIMIT 50",
       parameters: [{ name: "@email", value: email }],
     })
     .fetchAll();
