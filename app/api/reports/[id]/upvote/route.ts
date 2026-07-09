@@ -13,17 +13,28 @@ export async function POST(
     }
 
     const { id } = await params;
+    const email = session.user?.email ?? "anonymous";
 
-    const { resource: report } = await db.item(id, id).read<Report>();
-    if (!report) {
-        return NextResponse.json({ error: "Not found" }, { status: 404 });
+    try {
+        const { resource: report } = await db.item(id, id).read<Report>();
+        if (!report) {
+            return NextResponse.json({ error: "Not found" }, { status: 404 });
+        }
+
+        const upvotedBy: string[] = report.upvotedBy ?? [];
+        if (upvotedBy.includes(email)) {
+            return NextResponse.json({ error: "Already voted", upvoteCount: report.upvoteCount }, { status: 409 });
+        }
+
+        const { resource: updated } = await db.item(id, id).replace({
+            ...report,
+            upvoteCount: (report.upvoteCount ?? 0) + 1,
+            upvotedBy: [...upvotedBy, email],
+            updatedAt: new Date().toISOString(),
+        });
+
+        return NextResponse.json({ upvoteCount: updated?.upvoteCount });
+    } catch {
+        return NextResponse.json({ error: "Failed to upvote. Please try again." }, { status: 500 });
     }
-
-    const { resource: updated } = await db.item(id, id).replace({
-        ...report,
-        upvoteCount: (report.upvoteCount ?? 0) + 1,
-        updatedAt: new Date().toISOString(),
-    });
-
-    return NextResponse.json({ upvoteCount: updated?.upvoteCount });
 }

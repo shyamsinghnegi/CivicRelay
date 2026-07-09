@@ -51,8 +51,19 @@ export async function POST(req: NextRequest) {
     }
 
     const { imageUrl } = await req.json();
-    if (!imageUrl) {
+    if (!imageUrl || typeof imageUrl !== "string") {
         return NextResponse.json({ error: "No imageUrl provided" }, { status: 400 });
+    }
+
+    // Only allow Azure Blob Storage URLs — prevent SSRF
+    let parsedUrl: URL;
+    try {
+        parsedUrl = new URL(imageUrl);
+    } catch {
+        return NextResponse.json({ error: "Invalid imageUrl" }, { status: 400 });
+    }
+    if (!parsedUrl.hostname.endsWith(".blob.core.windows.net")) {
+        return NextResponse.json({ error: "Invalid imageUrl" }, { status: 400 });
     }
 
     let result;

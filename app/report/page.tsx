@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ArrowLeft, Camera, ImagePlus, MapPin, ChevronRight, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,6 +26,12 @@ export default function ReportPage() {
     const [uploading, setUploading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        return () => {
+            photos.forEach((p) => URL.revokeObjectURL(p.preview));
+        };
+    }, []);
 
     const categories: IssueCategory[] = [
         "pothole", "streetlight", "garbage", "water",

@@ -15,6 +15,7 @@ export type Report = {
     imageUrl?: string;
     imageUrls?: string[];
     submittedBy?: string;
+    upvotedBy?: string[];
     createdAt?: string;
     updatedAt?: string;
 };

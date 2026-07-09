@@ -18,9 +18,12 @@ export function UpvoteButton({ reportId, initialCount }: UpvoteButtonProps) {
     setLoading(true);
 
     const res = await fetch(`/api/reports/${reportId}/upvote`, { method: "POST" });
+    const data = await res.json();
     if (res.ok) {
-      const data = await res.json();
       setCount(data.upvoteCount);
+      setVoted(true);
+    } else if (res.status === 409) {
+      // already voted on a previous visit
       setVoted(true);
     }
 
