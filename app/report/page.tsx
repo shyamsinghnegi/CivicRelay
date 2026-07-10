@@ -125,6 +125,24 @@ export default function ReportPage() {
 
         const imageUrls = photos.map((p) => p.url);
 
+        // Try to get GPS coordinates — non-blocking, submit anyway if denied
+        let lat: number | undefined;
+        let lng: number | undefined;
+        let location = "India";
+        try {
+            const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+            );
+            lat = pos.coords.latitude;
+            lng = pos.coords.longitude;
+            // Reverse geocode to get city name
+            const geo = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
+            const geoData = await geo.json();
+            location = geoData.location ?? "India";
+        } catch {
+            // user denied or unavailable — submit without coords
+        }
+
         const res = await fetch("/api/reports", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -132,10 +150,12 @@ export default function ReportPage() {
                 title,
                 description,
                 category: selectedCategory,
-                location: "Ranchi",
+                location,
                 imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
                 aiTags: aiTags.length > 0 ? aiTags : undefined,
                 secondaryCategories: secondaryCategories.length > 0 ? secondaryCategories : undefined,
+                lat,
+                lng,
             }),
         });
 
@@ -347,13 +367,12 @@ export default function ReportPage() {
                         />
                     </div>
 
-                    <button className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 shadow-sm">
+                    <div className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 shadow-sm">
                         <MapPin className="size-4 shrink-0 text-teal-700" />
                         <span className="flex-1 text-left text-sm text-slate-700">
-                            Ranchi · auto-detected
+                            Your location · captured on submit
                         </span>
-                        <ChevronRight className="size-4 text-slate-400" />
-                    </button>
+                    </div>
 
                     {error && <p className="text-sm text-red-500">{error}</p>}
 

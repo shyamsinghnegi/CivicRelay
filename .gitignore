@@ -43,3 +43,6 @@ next-env.d.ts
 # docs / learning-project bookkeeping (kept local only)
 *.md
 !README.md
+
+# local seed / dev scripts
+/scripts/

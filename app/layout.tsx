@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import "azure-maps-control/dist/atlas.min.css";
 import { BottomNav } from "./components/BottomNav";
 
 const inter = Inter({

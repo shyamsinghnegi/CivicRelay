@@ -13,6 +13,7 @@
     "@azure/core-auth": "^1.10.1",
     "@azure/cosmos": "^4.9.3",
     "@azure/storage-blob": "^12.33.0",
+    "azure-maps-control": "^3.7.4",
     "lucide-react": "^1.22.0",
     "next": "16.2.9",
     "next-auth": "^4.24.14",

@@ -25,7 +25,7 @@ export default async function Home() {
         <Logo />
         <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm">
           <MapPin className="size-4 text-teal-700" />
-          Ranchi
+          India
         </span>
       </div>
 
