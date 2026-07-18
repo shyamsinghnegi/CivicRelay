@@ -18,6 +18,8 @@ export type Report = {
     upvotedBy?: string[];
     createdAt?: string;
     updatedAt?: string;
+    lat?: number;
+    lng?: number;
 };
 
 

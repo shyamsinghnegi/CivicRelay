@@ -51,7 +51,7 @@ export default function MapPage() {
                             />
                         ) : (
                             <div className="size-20 shrink-0 rounded-xl bg-slate-200 flex items-center justify-center text-2xl">
-                                {categoryConfig[selected.category]?.emoji ?? "📍"}
+                                📍
                             </div>
                         )}
                         <div className="min-w-0 flex-1">

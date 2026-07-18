@@ -7,6 +7,21 @@ import { AzureMap } from "../components/AzureMap";
 import type { Report } from "../lib/reports";
 
 type SheetSnap = "peek" | "half" | "full";
+type SortKey = "newest" | "upvotes" | "nearest";
+
+const sortLabels: { key: SortKey; label: string }[] = [
+    { key: "newest",  label: "Newest"  },
+    { key: "upvotes", label: "Most voted" },
+    { key: "nearest", label: "Nearest" },
+];
+
+function sortReports(reports: Report[], sort: SortKey): Report[] {
+    const copy = [...reports];
+    if (sort === "upvotes") return copy.sort((a, b) => (b.upvoteCount ?? 0) - (a.upvoteCount ?? 0));
+    if (sort === "nearest") return copy.sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999));
+    // newest — already sorted by API (_ts DESC), but re-sort defensively
+    return copy.sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
+}
 
 const PEEK_TOP = () => window.innerHeight - 140 - 56;
 const HALF_TOP = () => Math.round(window.innerHeight * 0.45);
@@ -20,6 +35,13 @@ export default function NearbyPage() {
     const [mounted, setMounted] = useState(false);
     const [pinReport, setPinReport] = useState<Report | null>(null);
     const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; t: number } | null>(null);
+    const [sort, setSort] = useState<SortKey>("newest");
+    const [sortOpen, setSortOpen] = useState(false);
+    const [offset, setOffset] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const listRef = useRef<HTMLDivElement>(null);
+    const LIMIT = 20;
 
     const sheetRef = useRef<HTMLDivElement>(null);
     const dragStartY = useRef<number | null>(null);
@@ -29,10 +51,31 @@ export default function NearbyPage() {
     useEffect(() => {
         setMounted(true);
         if (sheetRef.current) sheetRef.current.style.top = `${PEEK_TOP()}px`;
-        fetch("/api/reports")
+        fetch(`/api/reports?offset=0&limit=${LIMIT}`)
             .then((r) => r.json())
-            .then((data) => setReports(data.items ?? []));
+            .then((data) => {
+                setReports(data.items ?? []);
+                setHasMore(data.hasMore ?? false);
+                setOffset(LIMIT);
+            });
     }, []);
+
+    async function loadMore() {
+        if (loadingMore || !hasMore) return;
+        setLoadingMore(true);
+        const data = await fetch(`/api/reports?offset=${offset}&limit=${LIMIT}`).then((r) => r.json());
+        setReports((prev) => [...prev, ...(data.items ?? [])]);
+        setHasMore(data.hasMore ?? false);
+        setOffset((o) => o + LIMIT);
+        setLoadingMore(false);
+    }
+
+    function onListScroll(e: React.UIEvent<HTMLDivElement>) {
+        const el = e.currentTarget;
+        if (el.scrollHeight - el.scrollTop - el.clientHeight < 100) {
+            loadMore();
+        }
+    }
 
     function animateTo(px: number) {
         if (sheetRef.current) {
@@ -149,27 +192,62 @@ export default function NearbyPage() {
                                         </button>
                                     ))}
                                 </div>
-                                <button className="flex items-center gap-1 rounded-full bg-white border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">
-                                    <ArrowUpDown className="size-3" />
-                                    Sort
-                                </button>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setSortOpen((o) => !o)}
+                                        className="flex items-center gap-1 rounded-full bg-white border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700"
+                                    >
+                                        <ArrowUpDown className="size-3" />
+                                        {sortLabels.find((s) => s.key === sort)?.label}
+                                    </button>
+                                    {sortOpen && (
+                                        <>
+                                            {/* backdrop to close on outside tap */}
+                                            <div className="fixed inset-0 z-30" onClick={() => setSortOpen(false)} />
+                                            <div className="absolute right-0 top-8 z-40 w-36 overflow-hidden rounded-xl bg-white shadow-lg border border-slate-100">
+                                                {sortLabels.map(({ key, label }) => (
+                                                    <button
+                                                        key={key}
+                                                        onClick={() => { setSort(key); setSortOpen(false); }}
+                                                        className={`flex w-full items-center justify-between px-4 py-2.5 text-xs font-medium transition-colors ${sort === key ? "text-teal-700 bg-teal-50" : "text-slate-700 hover:bg-slate-50"}`}
+                                                    >
+                                                        {label}
+                                                        {sort === key && <span className="text-teal-600">✓</span>}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
                         {/* Report list */}
-                        <div className="flex-1 overflow-y-auto px-5 pb-4 flex flex-col gap-3">
+                        <div
+                            ref={listRef}
+                            className="flex-1 overflow-y-auto px-5 pb-4 flex flex-col gap-3"
+                            onScroll={onListScroll}
+                        >
                             {reports.length === 0 ? (
                                 <p className="py-8 text-center text-sm text-slate-400">
                                     No reports yet. Be the first to report an issue!
                                 </p>
                             ) : (
-                                reports.map((report) => (
-                                    <ReportCard
-                                        key={report.id}
-                                        report={report}
-                                        onClick={report.lat && report.lng ? () => handleMapSelect(report) : undefined}
-                                    />
-                                ))
+                                <>
+                                    {sortReports(reports, sort).map((report) => (
+                                        <ReportCard
+                                            key={report.id}
+                                            report={report}
+                                            onClick={report.lat && report.lng ? () => handleMapSelect(report) : undefined}
+                                        />
+                                    ))}
+                                    {loadingMore && (
+                                        <p className="py-3 text-center text-xs text-slate-400">Loading more…</p>
+                                    )}
+                                    {!hasMore && reports.length > 0 && (
+                                        <p className="py-3 text-center text-xs text-slate-400">All reports loaded</p>
+                                    )}
+                                </>
                             )}
                         </div>
                     </>
