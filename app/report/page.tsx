@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Camera, ImagePlus, MapPin, ChevronRight, Loader2, X } from "lucide-react";
+import { ArrowLeft, Camera, ImagePlus, MapPin, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CategoryTile } from "../components/CategoryTile";
@@ -9,7 +9,8 @@ import { Button } from "../components/Button";
 import type { IssueCategory } from "../lib/categories";
 
 type Step = 1 | 2 | 3;
-type Photo = { preview: string; url: string };
+// file = raw File object kept in memory; preview = local blob URL for display
+type Photo = { file: File; preview: string };
 
 export default function ReportPage() {
     const router = useRouter();
@@ -23,14 +24,14 @@ export default function ReportPage() {
     const [detectedCategory, setDetectedCategory] = useState<IssueCategory | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
-    const [uploading, setUploading] = useState(false);
+    const [analyzing, setAnalyzing] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [submitStep, setSubmitStep] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
+    // Revoke object URLs on unmount to free browser memory
     useEffect(() => {
-        return () => {
-            photos.forEach((p) => URL.revokeObjectURL(p.preview));
-        };
+        return () => { photos.forEach((p) => URL.revokeObjectURL(p.preview)); };
     }, []);
 
     const categories: IssueCategory[] = [
@@ -41,80 +42,64 @@ export default function ReportPage() {
     async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
         const files = Array.from(e.target.files ?? []);
         if (files.length === 0) return;
+        e.target.value = "";
 
-        setUploading(true);
         setError(null);
 
         const MAX_PHOTOS = 6;
-        if (photos.length >= MAX_PHOTOS) {
-            setError("You can add up to 6 photos.");
-            setUploading(false);
-            return;
-        }
-
-        // Deduplicate within the batch by name+size, and against already-uploaded URLs
-        const existingUrls = new Set(photos.map((p) => p.url));
         const slotsLeft = MAX_PHOTOS - photos.length;
+        if (slotsLeft <= 0) { setError("You can add up to 6 photos."); return; }
+
+        // Deduplicate within batch by name+size fingerprint
+        const existingKeys = new Set(photos.map((p) => `${p.file.name}-${p.file.size}`));
         const seenKeys = new Set<string>();
         const uniqueFiles: File[] = [];
         for (const f of files) {
             if (uniqueFiles.length >= slotsLeft) break;
             const key = `${f.name}-${f.size}`;
-            if (!seenKeys.has(key)) {
+            if (!existingKeys.has(key) && !seenKeys.has(key)) {
                 seenKeys.add(key);
                 uniqueFiles.push(f);
             }
         }
+        if (uniqueFiles.length === 0) return;
 
-        const newPhotos: Photo[] = [];
-
-        for (const file of uniqueFiles) {
-            const preview = URL.createObjectURL(file);
-            const formData = new FormData();
-            formData.append("file", file);
-            const res = await fetch("/api/upload", { method: "POST", body: formData });
-            const data = await res.json();
-
-            if (!res.ok) {
-                setError("One or more uploads failed. Please try again.");
-                setUploading(false);
-                return;
-            }
-
-            if (existingUrls.has(data.url)) {
-                // Same image content already added — revoke the unused preview blob
-                URL.revokeObjectURL(preview);
-            } else {
-                existingUrls.add(data.url);
-                newPhotos.push({ preview, url: data.url });
-            }
-        }
+        const newPhotos: Photo[] = uniqueFiles.map((file) => ({
+            file,
+            preview: URL.createObjectURL(file),
+        }));
 
         const allPhotos = [...photos, ...newPhotos];
         setPhotos(allPhotos);
-        setUploading(false);
 
-        if (allPhotos.length === 1) {
-            const analyzeRes = await fetch("/api/analyze", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ imageUrl: allPhotos[0].url }),
-            });
-            const analyzeData = await analyzeRes.json();
-            if (analyzeRes.ok && analyzeData.category) {
-                setAiTags(analyzeData.tags ?? []);
-                setDetectedCategory(analyzeData.category);
-                setSelectedCategory(analyzeData.category);
-            } else if (analyzeData.error === "blurry") {
-                setError("Photo is too blurry to analyse — select the category yourself.");
+        // Analyze only the first photo ever added — sends raw bytes, nothing stored
+        if (photos.length === 0 && newPhotos.length > 0) {
+            setAnalyzing(true);
+            try {
+                const formData = new FormData();
+                formData.append("file", newPhotos[0].file);
+                const res = await fetch("/api/analyze", { method: "POST", body: formData });
+                const data = await res.json();
+                if (data.category) {
+                    setAiTags(data.tags ?? []);
+                    setDetectedCategory(data.category);
+                    setSelectedCategory(data.category);
+                } else if (data.error === "blurry") {
+                    setError("Photo is too blurry to analyse — select the category yourself.");
+                }
+            } catch {
+                // analysis failed silently — user picks category manually
+            } finally {
+                setAnalyzing(false);
             }
         }
-
-        e.target.value = "";
     }
 
     function removePhoto(index: number) {
-        setPhotos((prev) => prev.filter((_, i) => i !== index));
+        setPhotos((prev) => {
+            URL.revokeObjectURL(prev[index].preview);
+            return prev.filter((_, i) => i !== index);
+        });
     }
 
     async function handleSubmit() {
@@ -123,9 +108,27 @@ export default function ReportPage() {
         setSubmitting(true);
         setError(null);
 
-        const imageUrls = photos.map((p) => p.url);
+        // 1. Upload all photos now (first time they touch storage)
+        const imageUrls: string[] = [];
+        if (photos.length > 0) {
+            setSubmitStep("Uploading photos…");
+            for (const photo of photos) {
+                const formData = new FormData();
+                formData.append("file", photo.file);
+                const res = await fetch("/api/upload", { method: "POST", body: formData });
+                if (!res.ok) {
+                    setError("Photo upload failed. Please try again.");
+                    setSubmitting(false);
+                    setSubmitStep(null);
+                    return;
+                }
+                const data = await res.json();
+                imageUrls.push(data.url);
+            }
+        }
 
-        // Try to get GPS coordinates — non-blocking, submit anyway if denied
+        // 2. Get GPS + reverse geocode
+        setSubmitStep("Getting your location…");
         let lat: number | undefined;
         let lng: number | undefined;
         let location = "India";
@@ -135,14 +138,14 @@ export default function ReportPage() {
             );
             lat = pos.coords.latitude;
             lng = pos.coords.longitude;
-            // Reverse geocode to get city name
             const geo = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
-            const geoData = await geo.json();
-            location = geoData.location ?? "India";
+            location = (await geo.json()).location ?? "India";
         } catch {
-            // user denied or unavailable — submit without coords
+            // GPS denied or unavailable — submit without coords
         }
 
+        // 3. Save the report
+        setSubmitStep("Saving report…");
         const res = await fetch("/api/reports", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -160,6 +163,7 @@ export default function ReportPage() {
         });
 
         setSubmitting(false);
+        setSubmitStep(null);
 
         if (!res.ok) {
             setError("Submission failed. Please try again.");
@@ -206,10 +210,7 @@ export default function ReportPage() {
 
             {/* Progress bar */}
             <div className="h-1 w-full bg-slate-200">
-                <div
-                    className="h-full bg-teal-600 transition-all duration-300"
-                    style={{ width: `${(step / 3) * 100}%` }}
-                />
+                <div className="h-full bg-teal-600 transition-all duration-300" style={{ width: `${(step / 3) * 100}%` }} />
             </div>
 
             {/* Step 1 — Photos */}
@@ -219,7 +220,7 @@ export default function ReportPage() {
                         <div className="flex flex-1 flex-col gap-3">
                             <div className="grid grid-cols-2 gap-3">
                                 {photos.map((photo, i) => (
-                                    <div key={photo.url} className="relative aspect-square rounded-xl overflow-hidden">
+                                    <div key={photo.preview} className="relative aspect-square rounded-xl overflow-hidden">
                                         <img src={photo.preview} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
                                         <button
                                             onClick={() => removePhoto(i)}
@@ -239,42 +240,34 @@ export default function ReportPage() {
                                     </button>
                                 )}
                             </div>
+                            {analyzing && (
+                                <div className="flex items-center gap-2 text-xs text-teal-600">
+                                    <Loader2 className="size-3.5 animate-spin" />
+                                    Analysing photo…
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div
                             className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-white cursor-pointer mb-5"
-                            onClick={() => !uploading && fileInputRef.current?.click()}
+                            onClick={() => fileInputRef.current?.click()}
                         >
                             <div className="flex size-16 items-center justify-center rounded-2xl bg-slate-100">
-                                {uploading ? (
-                                    <Loader2 className="size-8 animate-spin text-teal-600" />
-                                ) : (
-                                    <ImagePlus className="size-8 text-slate-400" />
-                                )}
+                                <ImagePlus className="size-8 text-slate-400" />
                             </div>
-                            <p className="text-sm font-medium text-slate-500">
-                                {uploading ? "Uploading…" : "Tap to add photos from gallery"}
-                            </p>
+                            <p className="text-sm font-medium text-slate-500">Tap to add photos from gallery</p>
                         </div>
                     )}
 
-                    {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+                    {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
 
                     <div className="flex flex-col gap-3 mt-5">
-                        {uploading && (
-                            <div className="flex items-center justify-center gap-2 text-sm text-teal-600">
-                                <Loader2 className="size-4 animate-spin" />
-                                Uploading…
-                            </div>
-                        )}
-                        <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                        <Button onClick={() => fileInputRef.current?.click()}>
                             <Camera className="size-4" />
                             Take photo
                         </Button>
-                        {photos.length > 0 && !uploading && (
-                            <Button onClick={() => setStep(2)}>
-                                Next →
-                            </Button>
+                        {photos.length > 0 && !analyzing && (
+                            <Button onClick={() => setStep(2)}>Next →</Button>
                         )}
                         <button onClick={() => setStep(2)} className="text-sm text-slate-400 underline">
                             Skip photo
@@ -384,7 +377,7 @@ export default function ReportPage() {
                         {submitting ? (
                             <>
                                 <Loader2 className="size-4 animate-spin" />
-                                Submitting…
+                                {submitStep ?? "Submitting…"}
                             </>
                         ) : (
                             "Submit report"

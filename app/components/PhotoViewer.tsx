@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 
-export function PhotoViewer({ urls, title }: { urls: string[]; title: string }) {
+export function PhotoViewer({ urls, title, compact = false }: { urls: string[]; title: string; compact?: boolean }) {
     const [activeIndex, setActiveIndex] = useState<number | null>(null);
     const [scale, setScale] = useState(1);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -107,17 +107,42 @@ export function PhotoViewer({ urls, title }: { urls: string[]; title: string }) 
 
     return (
         <>
-            <div className="flex gap-2 overflow-x-auto px-5 pb-1">
-                {urls.map((url, i) => (
-                    <button key={i} onClick={() => openAt(i)} className="shrink-0">
+            {compact ? (
+                // Admin compact view — smaller thumbnails, single photo left-aligned
+                <div className={`flex gap-2 overflow-x-auto pb-1 ${urls.length === 1 ? "justify-start" : ""}`}>
+                    {urls.map((url, i) => (
+                        <button key={i} onClick={() => openAt(i)} className="shrink-0">
+                            <img
+                                src={url}
+                                alt={`${title} photo ${i + 1}`}
+                                className="h-28 w-40 rounded-xl object-cover hover:opacity-90 transition-opacity"
+                            />
+                        </button>
+                    ))}
+                </div>
+            ) : urls.length === 1 ? (
+                <div className="px-5 pb-1">
+                    <button onClick={() => openAt(0)} className="w-full">
                         <img
-                            src={url}
-                            alt={`${title} photo ${i + 1}`}
-                            className="h-52 w-72 rounded-2xl object-cover"
+                            src={urls[0]}
+                            alt={`${title} photo 1`}
+                            className="h-64 w-full rounded-2xl object-cover"
                         />
                     </button>
-                ))}
-            </div>
+                </div>
+            ) : (
+                <div className="flex gap-2 overflow-x-auto px-5 pb-1">
+                    {urls.map((url, i) => (
+                        <button key={i} onClick={() => openAt(i)} className="shrink-0">
+                            <img
+                                src={url}
+                                alt={`${title} photo ${i + 1}`}
+                                className="h-52 w-72 rounded-2xl object-cover"
+                            />
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {activeIndex !== null && (
                 <div

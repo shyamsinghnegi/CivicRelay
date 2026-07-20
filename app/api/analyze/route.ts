@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import ImageAnalysisClient, { isUnexpected } from "@azure-rest/ai-vision-image-analysis";
 import { AzureKeyCredential } from "@azure/core-auth";
+import sharp from "sharp";
 import type { IssueCategory } from "../../lib/categories";
 
 const tagToCategoryMap: Record<string, IssueCategory> = {
@@ -44,58 +45,66 @@ const tagToCategoryMap: Record<string, IssueCategory> = {
     excavation: "dumping", sand: "dumping", brick: "dumping", concrete: "dumping",
 };
 
+const MAX_BYTES = 10 * 1024 * 1024;
+
 export async function POST(req: NextRequest) {
     const session = await getServerSession();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { imageUrl } = await req.json();
-    if (!imageUrl || typeof imageUrl !== "string") {
-        return NextResponse.json({ error: "No imageUrl provided" }, { status: 400 });
-    }
+    // Accept multipart file — no URL, no blob storage touched
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
 
-    // Only allow Azure Blob Storage URLs — prevent SSRF
-    let parsedUrl: URL;
+    if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (!file.type.startsWith("image/")) return NextResponse.json({ error: "File must be an image" }, { status: 400 });
+    if (file.size > MAX_BYTES) return NextResponse.json({ error: "Image too large" }, { status: 400 });
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Resize to 1200px max before sending to Vision — reduces Vision API latency
+    let resized: Buffer;
     try {
-        parsedUrl = new URL(imageUrl);
+        resized = await sharp(buffer)
+            .resize({ width: 1200, withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toBuffer();
     } catch {
-        return NextResponse.json({ error: "Invalid imageUrl" }, { status: 400 });
-    }
-    if (!parsedUrl.hostname.endsWith(".blob.core.windows.net")) {
-        return NextResponse.json({ error: "Invalid imageUrl" }, { status: 400 });
+        return NextResponse.json({ error: "blurry", category: null, tags: [] });
     }
 
+    // Send raw bytes to Vision API via base64 data URI
     let result;
     try {
         const client = ImageAnalysisClient(
             process.env.AI_VISION_ENDPOINT!,
             new AzureKeyCredential(process.env.AI_VISION_KEY!)
         );
+        const base64 = resized.toString("base64");
+        const dataUrl = `data:image/jpeg;base64,${base64}`;
         result = await client.path("/imageanalysis:analyze").post({
-            body: { url: imageUrl },
+            body: { url: dataUrl },
             queryParameters: { features: ["Tags"] },
             contentType: "application/json",
         });
     } catch {
-        return NextResponse.json({ error: "Vision API unavailable", category: null, tags: [] }, { status: 200 });
+        return NextResponse.json({ error: "Vision API unavailable", category: null, tags: [] });
     }
 
     if (isUnexpected(result)) {
-        return NextResponse.json({ error: "Vision API error", category: null, tags: [] }, { status: 200 });
+        return NextResponse.json({ error: "Vision API error", category: null, tags: [] });
     }
 
     const tags = result.body.tagsResult?.values ?? [];
 
-    // No tags at all → Vision couldn't parse the image (likely blurry/dark)
     if (tags.length === 0) {
-        return NextResponse.json({ error: "blurry", category: null, tags: [] }, { status: 200 });
+        return NextResponse.json({ error: "blurry", category: null, tags: [] });
     }
 
-    // All tags below 0.5 confidence → image too unclear to read reliably
     const maxConfidence = Math.max(...tags.map((t) => t.confidence));
     if (maxConfidence < 0.5) {
-        return NextResponse.json({ error: "blurry", category: null, tags: [] }, { status: 200 });
+        return NextResponse.json({ error: "blurry", category: null, tags: [] });
     }
 
     const tagNames = tags.map((t) => t.name.toLowerCase());
@@ -107,7 +116,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (Object.keys(scores).length === 0) {
-        return NextResponse.json({ error: "no_match", category: null, tags: [] }, { status: 200 });
+        return NextResponse.json({ error: "no_match", category: null, tags: [] });
     }
 
     const detectedCategory = (Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0]) as IssueCategory;
