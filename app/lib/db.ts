@@ -5,6 +5,7 @@ const client = new CosmosClient({
     key: process.env.COSMOS_KEY!,
 });
 
-export const db = client
-    .database(process.env.COSMOS_DATABASE!)
-    .container(process.env.COSMOS_CONTAINER!);
+const database = client.database(process.env.COSMOS_DATABASE!);
+
+export const db = database.container(process.env.COSMOS_CONTAINER!);
+export const adminsDb = database.container("admins");
